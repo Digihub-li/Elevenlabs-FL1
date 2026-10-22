@@ -1,0 +1,3 @@
+.env
+bridge/asterisk/*.conf
+*.local

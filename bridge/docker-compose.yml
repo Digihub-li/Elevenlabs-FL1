@@ -1,0 +1,14 @@
+services:
+  asterisk:
+    image: andrius/asterisk:20
+    container_name: el-fl1-bridge
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    volumes:
+      - ./asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./asterisk/rtp.conf:/etc/asterisk/rtp.conf:ro
+    environment:
+      TZ: ${TZ:-Europe/Vaduz}
