@@ -88,7 +88,7 @@ def pjsip(env: dict[str, str]) -> str:
 [global]
 type=global
 user_agent={ua}
-endpoint_identifier_order=ip,auth_username,username
+endpoint_identifier_order=ip,auth_username
 
 [transport-tcp]
 type=transport
@@ -140,6 +140,7 @@ rtp_symmetric=yes
 rtp_keepalive=1
 force_rport=yes
 rewrite_contact=yes
+identify_by=ip
 allow_unauthenticated_options=no
 
 [fl1-outbound]
@@ -163,6 +164,7 @@ rtp_symmetric=yes
 force_rport=yes
 rewrite_contact=yes
 media_use_received_transport=yes
+identify_by=ip
 allow_unauthenticated_options=no
 
 [fl1-identify]
