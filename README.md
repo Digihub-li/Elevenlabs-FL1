@@ -48,7 +48,7 @@ docker exec fo-voice-bridge asterisk -rx "dialplan reload"
 docker exec fo-voice-bridge asterisk -rx "module reload res_rtp_asterisk.so"
 ```
 
-Hardening in place (2026-10-30): peers identified by source IP only (`endpoint_identifier_order=ip`, `identify_by=ip`), `strictrtp=yes` with `probation=4`, and an outbound allowlist in `[from-elevenlabs]`: LI `+423`/`423`/`0423`/`00423` and CH `+41`/`41`/`0041`, with CH 090x and LI 90x premium numbers and everything else rejected (`Hangup(21)` plus a log line).
+Hardening in place (2026-10-30): peers identified by source IP only (`endpoint_identifier_order=ip`, `identify_by=ip`), `strictrtp=yes` with `probation=4`, and an outbound allowlist in `[from-elevenlabs]`: LI `+423`/`423`/`0423`/`00423` and CH `+41`/`41`/`0041` and Swiss national `0[1-8]…`/`091…` (10 digits, rewritten to `41…`), with CH 090x and LI 90x premium numbers and everything else rejected (`Hangup(21)` plus a log line).
 
 ## Layout
 

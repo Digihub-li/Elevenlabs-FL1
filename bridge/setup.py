@@ -238,6 +238,14 @@ EL_ALLOWED = (
     ("41", "0${EXTEN}"),  # -> 041..., _0X. strips the 0 -> 41...
     ("0041", "${EXTEN}"),  # [outbound] _0X. strips one 0 -> 041...
 )
+# Swiss national format (single leading 0, 10 digits) rewritten to 041...,
+# so [outbound] _0X. dials 41... like +41. Exact-length patterns (no X.).
+# 090x premium is blocked above; 091 is Ticino; 092-099 are unassigned or
+# internal/routing numbers and fall to the catch-all.
+EL_ALLOWED_CH_NATIONAL = (
+    "_0[1-8]XXXXXXXX",  # landline, mobile 07x, 08x service numbers
+    "_091XXXXXXX",  # Ticino
+)
 
 
 def from_elevenlabs() -> str:
@@ -245,12 +253,12 @@ def from_elevenlabs() -> str:
 
     Asterisk prefers the most specific pattern, so the premium patterns win
     over the country patterns, and everything else falls to the catch-alls.
-    Swiss national numbers (0[1-9]...) are not allowed: the _0X. strip would
-    turn them into arbitrary country codes (e.g. 044... -> 44... = UK).
+    Swiss national numbers (0441234567) are rewritten to 041441234567 first;
+    the bare _0X. strip alone would turn 044... into 44... (UK).
     """
     lines = [
         "; ElevenLabs -> bridge -> PSTN",
-        "; Allowlist: LI (+423/423/00423/0423) and CH (+41/41/0041) only; premium 90x blocked; everything else rejected.",
+        "; Allowlist: LI (+423/423/00423/0423) and CH (+41/41/0041/0xx national) only; premium 90x blocked; everything else rejected.",
         "[from-elevenlabs]",
     ]
     for prefix, country in EL_BLOCKED_PREFIXES:
@@ -261,6 +269,8 @@ def from_elevenlabs() -> str:
         ]
     for prefix, target in EL_ALLOWED:
         lines.append(f"exten => _{prefix}X.,1,Goto(outbound,{target},1)")
+    for pattern in EL_ALLOWED_CH_NATIONAL:
+        lines.append(f"exten => {pattern},1,Goto(outbound,041${{EXTEN:1}},1)")
     for catch in ("_X.", "_+X."):
         lines += [
             f"exten => {catch},1,Log(WARNING,from-elevenlabs: blocked non-allowlisted ${{EXTEN}} from ${{CALLERID(num)}})",
