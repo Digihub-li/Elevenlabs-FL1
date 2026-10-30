@@ -214,13 +214,29 @@ qualify_frequency=0
 
 
 # Outbound calls requested by the ElevenLabs agent are limited to Swiss and
-# Liechtenstein numbers. Premium-rate ranges are rejected.
-EL_ALLOWED_PREFIXES = ("+41", "0041", "+423", "00423")
+# Liechtenstein numbers. Premium-rate ranges are rejected first.
+#
+# Leading-0 formats go through [outbound] _0X., which strips one 0 (CommPlus
+# "Amtsholung"): 04237978681 -> 4237978681. This mirrors the live deployment.
 EL_BLOCKED_PREFIXES = (
-    "+4190",  # CH 090x premium
-    "004190",
-    "+42390",  # LI 90x premium
-    "0042390",
+    ("+4190", "CH"),  # CH 090x premium
+    ("4190", "CH"),
+    ("004190", "CH"),
+    ("090", "CH"),
+    ("+42390", "LI"),  # LI 90x premium
+    ("42390", "LI"),
+    ("042390", "LI"),
+    ("0042390", "LI"),
+)
+# (pattern prefix, Goto target extension) — target is what [outbound] receives.
+EL_ALLOWED = (
+    ("+423", "${EXTEN}"),  # [outbound] _+X. strips the plus -> 423...
+    ("423", "${EXTEN}"),  # dialed as is
+    ("0423", "${EXTEN}"),  # [outbound] _0X. strips the 0 -> 423...
+    ("00423", "${EXTEN}"),  # [outbound] _0X. strips one 0 -> 0423...
+    ("+41", "0${EXTEN:1}"),  # -> 041..., _0X. strips the 0 -> 41...
+    ("41", "0${EXTEN}"),  # -> 041..., _0X. strips the 0 -> 41...
+    ("0041", "${EXTEN}"),  # [outbound] _0X. strips one 0 -> 041...
 )
 
 
@@ -229,31 +245,27 @@ def from_elevenlabs() -> str:
 
     Asterisk prefers the most specific pattern, so the premium patterns win
     over the country patterns, and everything else falls to the catch-alls.
+    Swiss national numbers (0[1-9]...) are not allowed: the _0X. strip would
+    turn them into arbitrary country codes (e.g. 044... -> 44... = UK).
     """
     lines = [
+        "; ElevenLabs -> bridge -> PSTN",
+        "; Allowlist: LI (+423/423/00423/0423) and CH (+41/41/0041) only; premium 90x blocked; everything else rejected.",
         "[from-elevenlabs]",
-        "; Allowlist: CH (+41/0041) and LI (+423/00423). Premium and all else hang up.",
     ]
-    for prefix in EL_BLOCKED_PREFIXES:
-        lines.append(f"exten => _{prefix}X.,1,Goto(el-blocked,s,1)")
-    for prefix in EL_ALLOWED_PREFIXES:
-        lines.append(f"exten => _{prefix}X.,1,Goto(el-allowed,${{EXTEN}},1)")
-    lines += [
-        "exten => _+X.,1,Goto(el-blocked,s,1)",
-        "exten => _X.,1,Goto(el-blocked,s,1)",
-        "exten => i,1,Goto(el-blocked,s,1)",
-        "",
-        "[el-allowed]",
-        "; Digits and a leading plus only, so nothing else ends up in the dial string.",
-        "exten => _+X.,1,GotoIf($[\"${FILTER(+0123456789,${EXTEN})}\" != \"${EXTEN}\"]?el-blocked,s,1)",
-        " same => n,Goto(outbound,${EXTEN},1)",
-        "exten => _0X.,1,GotoIf($[\"${FILTER(0123456789,${EXTEN})}\" != \"${EXTEN}\"]?el-blocked,s,1)",
-        " same => n,Goto(outbound,${EXTEN},1)",
-        "",
-        "[el-blocked]",
-        "exten => s,1,Log(WARNING,Blocked ElevenLabs outbound to ${CALLERID(dnid)})",
-        " same => n,Hangup(21)",
-    ]
+    for prefix, country in EL_BLOCKED_PREFIXES:
+        lines += [
+            f"exten => _{prefix}X.,1,NoOp(BLOCK premium {country} ${{EXTEN}})",
+            f" same => n,Log(WARNING,from-elevenlabs: blocked premium {country} ${{EXTEN}})",
+            " same => n,Hangup(21)",
+        ]
+    for prefix, target in EL_ALLOWED:
+        lines.append(f"exten => _{prefix}X.,1,Goto(outbound,{target},1)")
+    for catch in ("_X.", "_+X."):
+        lines += [
+            f"exten => {catch},1,Log(WARNING,from-elevenlabs: blocked non-allowlisted ${{EXTEN}} from ${{CALLERID(num)}})",
+            " same => n,Hangup(21)",
+        ]
     return "\n".join(lines)
 
 
@@ -287,6 +299,13 @@ exten => _+X.,1,NoOp(Outbound PSTN ${{EXTEN}})
 exten => _X.,1,NoOp(Outbound PSTN ${{EXTEN}})
  same => n,Set(CALLERID(all)="{cli}" <+{did}>)
  same => n,Dial(PJSIP/fl1-outbound/sip:${{EXTEN}}@{host}:{port}\\;transport=tcp,90)
+ same => n,Hangup()
+
+; CommPlus Amtsholung (leading 0) - 04237978681 -> 4237978681
+exten => _0X.,1,NoOp(Outbound Amtsholung ${{EXTEN}})
+ same => n,Set(NUM=${{EXTEN:1}})
+ same => n,Set(CALLERID(all)="{cli}" <+{did}>)
+ same => n,Dial(PJSIP/fl1-outbound/sip:${{NUM}}@{host}:{port}\\;transport=tcp,90)
  same => n,Hangup()
 
 {elevenlabs_dialplan}

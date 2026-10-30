@@ -36,6 +36,20 @@ Cloud firewall, inbound:
 
 Do not commit `.env` or anything under `bridge/asterisk/*.conf`. `setup.py` writes those from `.env`.
 
+## Current deployment
+
+The production bridge runs as Docker container `fo-voice-bridge` (image `andrius/asterisk:20`, host network) on the FO voice droplet. Its config lives in `/opt/fo-voice/asterisk/` (`pjsip.conf`, `extensions.conf`, `rtp.conf`, `modules.conf`), bind-mounted read-only into the container. The droplet is reached by SSH via the `spark-553e` jump host.
+
+That config was generated once and has since been patched in place; `setup.py` mirrors it but is not re-run there. When editing live files, write in place (`cat new > file`, not `sed -i` or `mv`) so the single-file bind mounts keep the same inode, then reload without restarting:
+
+```bash
+docker exec fo-voice-bridge asterisk -rx "module reload res_pjsip.so"
+docker exec fo-voice-bridge asterisk -rx "dialplan reload"
+docker exec fo-voice-bridge asterisk -rx "module reload res_rtp_asterisk.so"
+```
+
+Hardening in place (2026-10-30): peers identified by source IP only (`endpoint_identifier_order=ip`, `identify_by=ip`), `strictrtp=yes` with `probation=4`, and an outbound allowlist in `[from-elevenlabs]`: LI `+423`/`423`/`0423`/`00423` and CH `+41`/`41`/`0041`, with CH 090x and LI 90x premium numbers and everything else rejected (`Hangup(21)` plus a log line).
+
 ## Layout
 
 ```text
